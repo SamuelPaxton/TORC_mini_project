@@ -42,13 +42,17 @@ public:
   void processLaserScan(const sensor_msgs::LaserScan::ConstPtr& scan) {
     if (m_should_seek) {
       geometry_msgs::Twist base_cmd;
-      geometry_msgs::Vector3 displacement;
 
       //the middle entry corresponds to what is directly in front of the turtlebot.
       const float center_entry = scan->ranges[scan->ranges.size() / 2];
       
       //turn until object is directly in front of us, then move forward.
       if (m_found) {
+	//the center entry of ranges[] is directly along the x axis 
+     	geometry_msgs::Vector3 displacement; 
+	displacement.x = center_entry;
+	m_displacement_pub.publish(displacement);
+
         base_cmd.linear.x = m_move_speed;
       }
       else if (center_entry > 0) {
@@ -58,10 +62,6 @@ public:
         base_cmd.angular.z = m_turn_speed;
       }
 
-      //the center entry of ranges[] is directly along the x axis, i.e. it is the displacement along x  
-      displacement.x = center_entry;
-      
-      m_displacement_pub.publish(displacement);
       m_velocity_pub.publish(base_cmd);
     }
   }
