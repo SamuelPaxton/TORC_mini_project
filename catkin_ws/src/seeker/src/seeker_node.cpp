@@ -12,29 +12,27 @@
 #include "seeker/enable.h"
 
 class RobotDriver {
-private:
-  ros::NodeHandle seeker_node_handle;
-  ros::Publisher displacement_pub;
-  ros::Publisher velocity_pub;
-  bool go, found;
-  
 public:
   
-  RobotDriver(ros::NodeHandle &nh) {
-    seeker_node_handle = nh;
-    displacement_pub = seeker_node_handle.advertise<geometry_msgs::Vector3>("displacement", 100);
-    velocity_pub = seeker_node_handle.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/teleop", 100);
-    go = false;
-    found = false;
+  RobotDriver(ros::NodeHandle &nh) : 
+    m_turn_speed(.25), 
+    m_move_speed(.25), 
+    m_should_seek(false), 
+    m_found(false),
+    m_seeker_node_handle(nh),
+    m_displacement_pub(m_seeker_node_handle.advertise<geometry_msgs::Vector3>("displacement", 100)),
+    m_velocity_pub(m_seeker_node_handle.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/teleop", 100)) {
+  
   }
   
   bool processEnableCall(seeker::enable::Request &req, seeker::enable::Response &res) {
     if (req.data) {
-      go = true;
+      m_should_seek = true;
       res.message = "Enabling seeking.";
     }
     else {
-      go = false;
+      m_should_seek = false;
+      m_found = false; //in case ball is moved while disabled, make the turtlebot re-find the ball.
       res.message = "Disabling seeking.";
     }
     res.success = true;
@@ -42,29 +40,38 @@ public:
   
   //when enabled, the turtlebot spins until the ball is directly in front of it and then moves forward.
   void processLaserScan(const sensor_msgs::LaserScan::ConstPtr& scan) {
-    if (go) {
+    if (m_should_seek) {
       geometry_msgs::Twist base_cmd;
       geometry_msgs::Vector3 displacement;
 
+      //the middle entry corresponds to what is directly in front of the turtlebot.
       const float center_entry = scan->ranges[scan->ranges.size() / 2];
       
       //turn until object is directly in front of us, then move forward.
-      if (found) {
-        base_cmd.linear.x = .25;
+      if (m_found) {
+        base_cmd.linear.x = m_move_speed;
       }
       else if (center_entry > 0) {
-        found = true;
+        m_found = true;
       }
       else {
-        base_cmd.angular.z = .25;
+        base_cmd.angular.z = m_turn_speed;
       }
 
-      //the center entry of ranges[] is directly along the x axis, so the displacement along x is 
+      //the center entry of ranges[] is directly along the x axis, i.e. it is the displacement along x  
       displacement.x = center_entry;
-      displacement_pub.publish(displacement);
-      velocity_pub.publish(base_cmd);
+      
+      m_displacement_pub.publish(displacement);
+      m_velocity_pub.publish(base_cmd);
     }
   }
+  
+private:
+  ros::NodeHandle m_seeker_node_handle;
+  ros::Publisher m_displacement_pub, m_velocity_pub;
+  bool m_should_seek, m_found;
+  const float m_turn_speed, m_move_speed;
+  
 };
 
 int main(int argc, char **argv) {
